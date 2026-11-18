@@ -1,0 +1,38 @@
+name: Render ketchup short
+on:
+  workflow_dispatch:
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+      - name: Render this shard (frames 78 each)
+        run: |
+          START=$(( ${{ matrix.shard }} * 78 ))
+          END=$(( START + 77 )); if [ $END -gt 1541 ]; then END=1541; fi
+          python3 tools/render/render.py --web engine/web --out frames --range $START-$END --w 540 --procs 4 --ms 1 --sm 1024
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frames-${{ matrix.shard }}
+          path: frames/f_*.png
+  assemble:
+    needs: render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: frames-*, path: frames, merge-multiple: true }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: pip install pillow
+      - run: python3 tools/captions/build.py caps.json 1542 1080 1920 caps
+      - run: ls frames | wc -l
+      - run: python3 tools/render/encode.py frames 1542 audio/mix.wav caps ketchup_short_1080p.mp4
+      - uses: actions/upload-artifact@v4
+        with: { name: ketchup_short_mp4, path: ketchup_short_1080p.mp4 }
